@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'fvp_platform_interface.dart';
 import 'extensions.dart';
 import 'media_info.dart';
+import 'fvp_per_instance_opts.dart';
 
 import '../mdk.dart' as mdk;
 
@@ -269,6 +270,11 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
           'file,ftp,rtmp,http,https,tls,rtp,tcp,udp,crypto,httpproxy,data,concatf,concat,subfile');
     }
     _playerOpts?.forEach((key, value) {
+      player.setProperty(key, value);
+    });
+    final instancePlayerOpts = Zone.current[fvpPerInstancePlayerOptsZoneKey]
+        as Map<String, String>?;
+    instancePlayerOpts?.forEach((key, value) {
       player.setProperty(key, value);
     });
 

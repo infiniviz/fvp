@@ -1,6 +1,7 @@
 // ignore_for_file: invalid_use_of_visible_for_testing_member
 
 // see https://github.com/ardera/flutter_packages/blob/main/packages/flutterpi_gstreamer_video_player/lib/src/controller.dart
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -10,9 +11,75 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 import 'media_info.dart'
     if (dart.library.js_interop) 'media_info_dummy.dart'
     if (dart.library.html) 'media_info_dummy.dart';
+import 'fvp_per_instance_opts.dart';
 import 'video_player_mdk.dart'
     if (dart.library.js_interop) 'video_player_dummy.dart'
     if (dart.library.html) 'video_player_dummy.dart';
+
+/// Serializes [FvpVideoPlayerController.initialize] so per-instance [player]
+/// options (via [Zone]) are not applied to another controller's platform [create].
+final class _FvpInitializeLock {
+  static Future<void> _chain = Future<void>.value();
+
+  static Future<void> run(Future<void> Function() action) {
+    final completer = Completer<void>();
+    _chain = _chain.then((_) async {
+      try {
+        await action();
+        completer.complete();
+      } catch (e, st) {
+        completer.completeError(e, st);
+      }
+    });
+    return completer.future;
+  }
+}
+
+/// [VideoPlayerController.networkUrl] with optional per-player MDK properties.
+///
+/// The [player] map uses the same keys as `registerWith(options: {'player': ...})`
+/// ([MDK setProperty](https://github.com/wang-bin/mdk-sdk/wiki/Player-APIs#void-setpropertyconst-stdstring-key-const-stdstring-value)).
+/// Values from [player] are applied after global `registerWith` `player` options, so they override on duplicate keys.
+///
+/// Concurrent [initialize] calls on [FvpVideoPlayerController] are serialized so
+/// per-instance [player] maps are not mixed up across players.
+class FvpVideoPlayerController extends VideoPlayerController {
+  /// Same parameters as [VideoPlayerController.networkUrl], plus [player].
+  // ignore: use_super_parameters — super.networkUrl must be invoked explicitly (no unnamed super).
+  FvpVideoPlayerController.networkUrl(
+    Uri url, {
+    Map<String, String>? player,
+    VideoFormat? formatHint,
+    Future<ClosedCaptionFile>? closedCaptionFile,
+    VideoPlayerOptions? videoPlayerOptions,
+    Map<String, String> httpHeaders = const <String, String>{},
+    VideoViewType viewType = VideoViewType.textureView,
+  })  : _fvpPlayerOpts = player,
+        super.networkUrl(
+          url,
+          formatHint: formatHint,
+          closedCaptionFile: closedCaptionFile,
+          videoPlayerOptions: videoPlayerOptions,
+          httpHeaders: httpHeaders,
+          viewType: viewType,
+        );
+
+  final Map<String, String>? _fvpPlayerOpts;
+
+  @override
+  Future<void> initialize() {
+    return _FvpInitializeLock.run(() {
+      final opts = _fvpPlayerOpts;
+      if (opts == null || opts.isEmpty) {
+        return super.initialize();
+      }
+      return runZoned(
+        () => super.initialize(),
+        zoneValues: {fvpPerInstancePlayerOptsZoneKey: opts},
+      );
+    });
+  }
+}
 
 MdkVideoPlayerPlatform get _platform {
   if (VideoPlayerPlatform.instance is! MdkVideoPlayerPlatform) {
