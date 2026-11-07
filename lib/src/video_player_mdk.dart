@@ -22,9 +22,20 @@ final _log = Logger('fvp');
 class MdkVideoPlayer extends mdk.Player {
   final streamCtl = StreamController<VideoEvent>();
   bool _initialized = false;
+  final _firstFrame = Completer<void>();
+
+  /// Completes when the first video frame is rendered, or on dispose.
+  Future<void> get firstFrameRendered => _firstFrame.future;
+
+  void _completeFirstFrame() {
+    if (!_firstFrame.isCompleted) {
+      _firstFrame.complete();
+    }
+  }
 
   @override
   void dispose() {
+    _completeFirstFrame();
     streamCtl.close();
     _initialized = false;
     super.dispose();
@@ -72,6 +83,9 @@ class MdkVideoPlayer extends mdk.Player {
     onEvent.listen((ev) {
       _log.fine(
           '$hashCode player$nativeHandle onEvent: ${ev.category} - ${ev.detail} - ${ev.error}');
+      if (ev.category == "render.video" && ev.detail == "1st_frame") {
+        _completeFirstFrame();
+      }
       if (ev.category == "reader.buffering") {
         final pos = position;
         final bufLen = buffered();
@@ -411,6 +425,10 @@ class MdkVideoPlayerPlatform extends VideoPlayerPlatform {
 
   MediaInfo? getMediaInfo(int playerId) {
     return _players[playerId]?.mediaInfo;
+  }
+
+  Future<void> firstFrameRendered(int playerId) {
+    return _players[playerId]?.firstFrameRendered ?? Future.value();
   }
 
   void setProperty(int playerId, String name, String value) {

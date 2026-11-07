@@ -135,6 +135,15 @@ extension FVPControllerExtensions on VideoPlayerController {
     return _platform.getMediaInfo(_getId(this));
   }
 
+  /// Completes when the first video frame has been rendered to the texture, or
+  /// when the player is disposed. Unlike `value.isInitialized`, which only means
+  /// the media was opened, the texture has real content once this completes.
+  /// May never complete on platforms that do not emit the mdk `1st_frame` event,
+  /// so callers should apply a timeout.
+  Future<void> get firstFrameRendered {
+    return _platform.firstFrameRendered(_getId(this));
+  }
+
   /// set additional properties
   /// https://github.com/wang-bin/mdk-sdk/wiki/Player-APIs#void-setpropertyconst-stdstring-key-const-stdstring-value
   void setProperty(String name, String value) {
